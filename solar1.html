@@ -1,111 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>3D Solar System with Video Capture</title>
+  <title>Solar Animation</title>
   <style>
-    body { margin: 0; overflow: hidden; background: black; }
-    canvas { display: block; }
+    canvas { background: #000; display: block; margin: auto; }
+    #download { display: block; margin: 20px auto; font-size: 18px; }
   </style>
 </head>
 <body>
+  <canvas id="solarCanvas" width="800" height="600"></canvas>
+  <a id="download" href="#" download="solar_recording.webm">Download Recording</a>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
+  <script>
+    const canvas = document.getElementById('solarCanvas');
+    const ctx = canvas.getContext('2d');
+    let angle = 0;
 
-<script>
-  let scene = new THREE.Scene();
-  let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  let renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
+    // Simple solar animation
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Lights
-  let light = new THREE.PointLight(0xffffff, 1, 0);
-  light.position.set(0, 0, 0);
-  scene.add(light);
+      // Sun
+      ctx.beginPath();
+      ctx.arc(400, 300, 50, 0, Math.PI * 2);
+      ctx.fillStyle = 'yellow';
+      ctx.fill();
 
-  // Sun
-  let sunGeometry = new THREE.SphereGeometry(2, 32, 32);
-  let sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
-  let sun = new THREE.Mesh(sunGeometry, sunMaterial);
-  scene.add(sun);
+      // Planet
+      const x = 400 + 150 * Math.cos(angle);
+      const y = 300 + 150 * Math.sin(angle);
+      ctx.beginPath();
+      ctx.arc(x, y, 20, 0, Math.PI * 2);
+      ctx.fillStyle = 'blue';
+      ctx.fill();
 
-  // Planets
-  function createPlanet(size, distance, color) {
-    let geometry = new THREE.SphereGeometry(size, 32, 32);
-    let material = new THREE.MeshStandardMaterial({ color });
-    let planet = new THREE.Mesh(geometry, material);
-    planet.position.x = distance;
-    scene.add(planet);
-    return planet;
-  }
-
-  let mercury = createPlanet(0.3, 4, 0xaaaaaa);
-  let venus   = createPlanet(0.5, 6, 0xffcc99);
-  let earth   = createPlanet(0.6, 8, 0x3399ff);
-  let mars    = createPlanet(0.4, 10, 0xff3300);
-  let jupiter = createPlanet(1.2, 14, 0xff9966);
-  let saturn  = createPlanet(1.0, 18, 0xffcc66);
-  let uranus  = createPlanet(0.9, 22, 0x66ffff);
-  let neptune = createPlanet(0.9, 26, 0x3366ff);
-
-  camera.position.z = 35;
-
-  let angle = 0;
-
-  // CCapture setup
-  const capturer = new CCapture({ format: 'webm', framerate: 30 });
-  let isCapturing = true;
-  let startTime = performance.now();
-
-  function animate() {
-    requestAnimationFrame(animate);
-
-    angle += 0.01;
-
-    mercury.position.x = 4 * Math.cos(angle * 4);
-    mercury.position.z = 4 * Math.sin(angle * 4);
-
-    venus.position.x = 6 * Math.cos(angle * 2);
-    venus.position.z = 6 * Math.sin(angle * 2);
-
-    earth.position.x = 8 * Math.cos(angle);
-    earth.position.z = 8 * Math.sin(angle);
-
-    mars.position.x = 10 * Math.cos(angle * 0.8);
-    mars.position.z = 10 * Math.sin(angle * 0.8);
-
-    jupiter.position.x = 14 * Math.cos(angle * 0.5);
-    jupiter.position.z = 14 * Math.sin(angle * 0.5);
-
-    saturn.position.x = 18 * Math.cos(angle * 0.4);
-    saturn.position.z = 18 * Math.sin(angle * 0.4);
-
-    uranus.position.x = 22 * Math.cos(angle * 0.3);
-    uranus.position.z = 22 * Math.sin(angle * 0.3);
-
-    neptune.position.x = 26 * Math.cos(angle * 0.2);
-    neptune.position.z = 26 * Math.sin(angle * 0.2);
-
-    renderer.render(scene, camera);
-
-    if (isCapturing) capturer.capture(renderer.domElement);
-
-    // Stop and download after 5 seconds
-    if (performance.now() - startTime > 5000 && isCapturing) {
-      capturer.stop();
-      capturer.save();
-      isCapturing = false;
+      angle += 0.03;
+      requestAnimationFrame(draw);
     }
-  }
 
-  // Start recording after 1 second
-  setTimeout(() => {
-    capturer.start();
-    animate();
-  }, 1000);
-</script>
+    draw();
 
+    // -------------------------------
+    // RECORDING SECTION
+    // -------------------------------
+    const stream = canvas.captureStream(30); // 30fps
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = e => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      document.getElementById('download').href = url;
+    };
+
+    recorder.start();
+
+    // Auto-stop after 10 seconds
+    setTimeout(() => {
+      recorder.stop();
+    }, 10000);
+  </script>
 </body>
 </html>
