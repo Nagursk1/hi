@@ -1,65 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Solar Animation</title>
   <style>
-    canvas { background: #000; display: block; margin: auto; }
-    #download { display: block; margin: 20px auto; font-size: 18px; }
+    body {
+      background-color: black;
+      color: white;
+      text-align: center;
+      font-family: Arial, sans-serif;
+    }
+    video {
+      width: 90%;
+      max-width: 800px;
+      margin-top: 30px;
+      border: 3px solid yellow;
+      border-radius: 15px;
+    }
+    .download-btn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: yellow;
+      color: black;
+      font-weight: bold;
+      text-decoration: none;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    .download-btn:hover {
+      background-color: orange;
+    }
   </style>
 </head>
 <body>
-  <canvas id="solarCanvas" width="800" height="600"></canvas>
-  <a id="download" href="#" download="solar_recording.webm">Download Recording</a>
 
-  <script>
-    const canvas = document.getElementById('solarCanvas');
-    const ctx = canvas.getContext('2d');
-    let angle = 0;
+  <h1>🌞 Solar System Simulation</h1>
 
-    // Simple solar animation
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+  <video controls>
+    <source src="solar.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
 
-      // Sun
-      ctx.beginPath();
-      ctx.arc(400, 300, 50, 0, Math.PI * 2);
-      ctx.fillStyle = 'yellow';
-      ctx.fill();
+  <br>
 
-      // Planet
-      const x = 400 + 150 * Math.cos(angle);
-      const y = 300 + 150 * Math.sin(angle);
-      ctx.beginPath();
-      ctx.arc(x, y, 20, 0, Math.PI * 2);
-      ctx.fillStyle = 'blue';
-      ctx.fill();
+  <!-- Download MP4 Button -->
+  <a class="download-btn" href="solar.mp4" download>⬇️ Download MP4</a>
 
-      angle += 0.03;
-      requestAnimationFrame(draw);
-    }
-
-    draw();
-
-    // -------------------------------
-    // RECORDING SECTION
-    // -------------------------------
-    const stream = canvas.captureStream(30); // 30fps
-    const recorder = new MediaRecorder(stream);
-    const chunks = [];
-
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = e => {
-      const blob = new Blob(chunks, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      document.getElementById('download').href = url;
-    };
-
-    recorder.start();
-
-    // Auto-stop after 10 seconds
-    setTimeout(() => {
-      recorder.stop();
-    }, 10000);
-  </script>
 </body>
 </html>
