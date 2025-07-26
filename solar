@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Solar System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script> <!-- Tone.js for audio -->
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background for space */
+            color: #e6edf3; /* Light text color */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(17, 24, 39, 0.9); /* Darker semi-transparent background */
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            max-width: 350px;
+            z-index: 100;
+            display: none; /* Hidden by default */
+            border: 1px solid rgba(59, 130, 246, 0.5); /* Blue border */
+        }
+        #info-panel h2 {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #60a5fa; /* Lighter blue for heading */
+        }
+        #info-panel p {
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        #info-panel ul {
+            list-style-type: disc;
+            margin-left: 20px;
+        }
+        #info-panel li {
+            margin-bottom: 5px;
+        }
+        #close-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #e6edf3;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background-color 0.3s ease;
+        }
+        #close-button:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        #loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            display: none; /* Hidden by default */
+            z-index: 200;
+        }
+        #sound-toggle {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(59, 130, 246, 0.7); /* Blue background */
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            z-index: 100;
+        }
+        #sound-toggle:hover {
+            background-color: rgba(59, 130, 246, 1);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-indicator" class="rounded-lg shadow-lg">Loading planet information...</div>
+    <div id="info-panel" class="rounded-xl shadow-2xl">
+        <button id="close-button">&times;</button>
+        <h2 id="planet-name"></h2>
+        <p id="planet-description"></p>
+        <ul id="planet-facts"></ul>
+    </div>
+    <button id="sound-toggle">Mute Sound</button>
+    <canvas id="solar-system-canvas"></canvas>
+
+    <script type="module">
+        // Firebase imports (needed even if not directly used for storage in this simple example, but good practice for future expansion)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase (provided by the Canvas environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let userId = null;
+
+        // Initialize Firebase
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Sign in anonymously or with custom token
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken)
+                    .then((userCredential) => {
+                        userId = userCredential.user.uid;
+                        console.log("Signed in with custom token:", userId);
+                    })
+                    .catch((error) => {
+                        console.error("Error signing in with custom token:", error);
+                        signInAnonymously(auth)
+                            .then((userCredential) => {
+                                userId = userCredential.user.uid;
+                                console.log("Signed in anonymously:", userId);
+                            })
+                            .catch((anonError) => {
+                                console.error("Error signing in anonymously:", anonError);
+                            });
+                    });
+            } else {
+                signInAnonymously(auth)
+                    .then((userCredential) => {
+                        userId = userCredential.user.uid;
+                        console.log("Signed in anonymously:", userId);
+                    })
+                    .catch((error) => {
+                        console.error("Error signing in anonymously:", error);
+                    });
+            }
+        } else {
+            console.warn("Firebase config not provided. Firestore operations will not be available.");
+        }
+
+
+        // --- Three.js Setup ---
+        const canvas = document.getElementById('solar-system-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        // Add background stars
+        const starGeometry = new THREE.BufferGeometry();
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
+        const starVertices = [];
+        for (let i = 0; i < 10000; i++) {
+            const x = (Math.random() - 0.5) * 2000;
+            const y = (Math.random() - 0.5) * 2000;
+            const z = (Math.random() - 0.5) * 2000;
+            starVertices.push(x, y, z);
+        }
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x333333); // Soft ambient light
+        scene.add(ambientLight);
+
+        // Sun (now with a more realistic appearance and pulsating effect)
+        const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
+        const sunMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffaa00, // Base color (can be yellowish-orange)
+            emissive: 0xffdd00, // Brighter emissive color for the core glow
+            emissiveIntensity: 1.2 // Increased emissive intensity
+        });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        scene.add(sun);
+
+        // Main light source from the sun (now stronger and positioned at the sun)
+        const sunLight = new THREE.PointLight(0xffffff, 7, 500, 0); // Increased intensity
+        sunLight.position.set(0, 0, 0); // Position at the center of the sun
+        scene.add(sunLight);
+
+        // Optional: Add a subtle glow sphere around the sun for a more diffused effect
+        const sunGlowGeometry = new THREE.SphereGeometry(12, 32, 32);
+        const sunGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffe066, // Slightly brighter glow color
+            transparent: true,
+            opacity: 0.4, // Increased base opacity
+            blending: THREE.AdditiveBlending, // Makes it blend additively with background
+            side: THREE.BackSide // Render the inside of the sphere
+        });
+        const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+        scene.add(sunGlow);
+
+        // Variables for sun glow pulsation
+        let glowPulseSpeed = 0.05;
+        let glowPulseAmplitude = 0.1;
+        let glowPulseOffset = 0;
+
+
+        // Camera position (adjusted slightly to better view inner planets, including Earth)
+        camera.position.set(0, 40, 70);
+
+        // OrbitControls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Smooth camera movement
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.maxDistance = 500;
+        controls.minDistance = 20;
+
+        // --- Planets Data ---
+        const planets = [];
+        const planetData = [
+            { name: "Mercury", radius: 0.8, color: 0x888888, orbitalRadius: 20, orbitalSpeed: 0.02 },
+            { name: "Venus", radius: 1.2, color: 0xcc9900, orbitalRadius: 30, orbitalSpeed: 0.015 },
+            { name: "Earth", radius: 1.5, color: 0x0000ff, orbitalRadius: 40, orbitalSpeed: 0.01, texture: 'earth', moon: { radius: 0.4, orbitalRadius: 3, orbitalSpeed: 0.05 } }, // Increased radius, added texture flag, added moon data
+            { name: "Mars", radius: 1.0, color: 0xff0000, orbitalRadius: 50, orbitalSpeed: 0.008 },
+            { name: "Jupiter", radius: 5.0, color: 0xcc6633, orbitalRadius: 80, orbitalSpeed: 0.004 },
+            { name: "Saturn", radius: 4.5, color: 0xddeeff, orbitalRadius: 110, orbitalSpeed: 0.003, hasRings: true },
+            { name: "Uranus", radius: 3.0, color: 0x99ccff, orbitalRadius: 140, orbitalSpeed: 0.002 },
+            { name: "Neptune", radius: 3.0, color: 0x000099, orbitalRadius: 170, orbitalSpeed: 0.0015 },
+        ];
+
+        // Function to create a simple Earth texture using Canvas
+        function createEarthTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; // Increased resolution
+            canvas.height = 256;
+            const context = canvas.getContext('2d');
+
+            // Ocean
+            context.fillStyle = '#0077be'; // Blue for oceans
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Continents (more detailed and varied)
+            context.fillStyle = '#228B22'; // Green for land
+            context.beginPath(); // North America
+            context.moveTo(canvas.width * 0.15, canvas.height * 0.3);
+            context.bezierCurveTo(canvas.width * 0.25, canvas.height * 0.1, canvas.width * 0.35, canvas.height * 0.2, canvas.width * 0.3, canvas.height * 0.4);
+            context.bezierCurveTo(canvas.width * 0.2, canvas.height * 0.5, canvas.width * 0.1, canvas.height * 0.4, canvas.width * 0.15, canvas.height * 0.3);
+            context.fill();
+
+            context.beginPath(); // South America
+            context.moveTo(canvas.width * 0.25, canvas.height * 0.6);
+            context.bezierCurveTo(canvas.width * 0.35, canvas.height * 0.5, canvas.width * 0.4, canvas.height * 0.7, canvas.width * 0.3, canvas.height * 0.8);
+            context.bezierCurveTo(canvas.width * 0.2, canvas.height * 0.7, canvas.width * 0.18, canvas.height * 0.65, canvas.width * 0.25, canvas.height * 0.6);
+            context.fill();
+
+            context.beginPath(); // Africa
+            context.moveTo(canvas.width * 0.5, canvas.height * 0.4);
+            context.bezierCurveTo(canvas.width * 0.6, canvas.height * 0.2, canvas.width * 0.7, canvas.height * 0.3, canvas.width * 0.65, canvas.height * 0.6);
+            context.bezierCurveTo(canvas.width * 0.6, canvas.height * 0.8, canvas.width * 0.45, canvas.height * 0.7, canvas.width * 0.5, canvas.height * 0.4);
+            context.fill();
+
+            context.beginPath(); // Eurasia
+            context.moveTo(canvas.width * 0.7, canvas.height * 0.3);
+            context.bezierCurveTo(canvas.width * 0.85, canvas.height * 0.1, canvas.width * 0.95, canvas.height * 0.2, canvas.width * 0.9, canvas.height * 0.5);
+            context.bezierCurveTo(canvas.width * 0.8, canvas.height * 0.7, canvas.width * 0.6, canvas.height * 0.6, canvas.width * 0.7, canvas.height * 0.3);
+            context.fill();
+
+            context.beginPath(); // Australia
+            context.arc(canvas.width * 0.85, canvas.height * 0.8, 20, 0, Math.PI * 2, false);
+            context.fill();
+
+            // Simple clouds (random white dots/smudges)
+            context.fillStyle = 'rgba(255, 255, 255, 0.3)'; // Semi-transparent white
+            for (let i = 0; i < 50; i++) {
+                context.beginPath();
+                context.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 5 + 5, 0, Math.PI * 2, false);
+                context.fill();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        planetData.forEach(data => {
+            let material;
+            if (data.texture === 'earth') {
+                const earthTexture = createEarthTexture();
+                material = new THREE.MeshPhongMaterial({ map: earthTexture, shininess: 10 }); // Phong material for more realistic lighting
+            } else {
+                material = new THREE.MeshLambertMaterial({ color: data.color }); // Lambert material reacts to light
+            }
+
+            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            const planet = new THREE.Mesh(geometry, material);
+            planet.userData = { name: data.name, orbitalRadius: data.orbitalRadius, orbitalSpeed: data.orbitalSpeed, angle: Math.random() * Math.PI * 2 };
+            scene.add(planet);
+            planets.push(planet);
+
+            // Add rings for Saturn
+            if (data.hasRings) {
+                const ringGeometry = new THREE.RingGeometry(data.radius * 1.2, data.radius * 2, 32);
+                const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide });
+                const rings = new THREE.Mesh(ringGeometry, ringMaterial);
+                rings.rotation.x = Math.PI / 2; // Orient rings horizontally
+                planet.add(rings); // Add rings as a child of Saturn
+            }
+
+            // Add Moon for Earth
+            if (data.moon) {
+                const moonGeometry = new THREE.SphereGeometry(data.moon.radius, 16, 16);
+                const moonMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc }); // Grey color for moon
+                const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+                // Store moon data in Earth's userData for animation
+                planet.userData.moon = {
+                    object: moon,
+                    orbitalRadius: data.moon.orbitalRadius,
+                    orbitalSpeed: data.moon.orbitalSpeed,
+                    angle: Math.random() * Math.PI * 2
+                };
+                planet.add(moon); // Add moon as a child of the planet (Earth)
+            }
+
+            // Add orbit lines
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(
+                new THREE.EllipseCurve(
+                    0, 0, // x, y center
+                    data.orbitalRadius, data.orbitalRadius, // x, y radius
+                    0, 2 * Math.PI, // start, end angle
+                    false, // clockwise
+                    0 // rotation
+                ).getPoints(100) // number of points
+            );
+            orbitGeometry.rotateX(Math.PI / 2); // Rotate to be horizontal
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0x333333 }); // Dark grey for subtle orbits
+            const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
+            scene.add(orbit);
+        });
+
+        // --- Tone.js Audio Setup ---
+        let backgroundAmbiance;
+        let clickSound;
+        let isSoundMuted = false;
+
+        // Function to initialize audio context and sounds
+        async function initializeAudio() {
+            if (Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log("Tone.js audio context started.");
+            }
+
+            // Background Ambiance (using a simple synth pad for space feel)
+            backgroundAmbiance = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "sine" },
+                envelope: {
+                    attack: 2,
+                    decay: 1,
+                    sustain: 0.8,
+                    release: 5
+                },
+                volume: -10 // Increased volume from -20 to -10
+            }).toDestination();
+            backgroundAmbiance.triggerAttackRelease(["C2", "G2", "C3"], "8n", Tone.now()); // Play a chord
+            backgroundAmbiance.loop = true;
+            backgroundAmbiance.loopEnd = "8n"; // Loop every 8th note
+
+            // Click Sound (simple short synth tone)
+            clickSound = new Tone.MembraneSynth().toDestination();
+            clickSound.volume.value = 0; // Increased volume from -10 to 0
+            
+            // Start background ambiance loop
+            Tone.Transport.scheduleRepeat((time) => {
+                backgroundAmbiance.triggerAttackRelease(["C2", "G2", "C3"], "8n", time);
+            }, "8n");
+            Tone.Transport.start();
+        }
+
+        // Sound toggle button
+        const soundToggleButton = document.getElementById('sound-toggle');
+        soundToggleButton.addEventListener('click', async () => {
+            if (Tone.context.state !== 'running') {
+                await initializeAudio(); // Initialize if not already running
+            }
+
+            isSoundMuted = !isSoundMuted;
+            if (isSoundMuted) {
+                Tone.Destination.mute = true;
+                soundToggleButton.textContent = "Unmute Sound";
+            } else {
+                Tone.Destination.mute = false;
+                soundToggleButton.textContent = "Mute Sound";
+            }
+        });
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotate Sun
+            sun.rotation.y += 0.001;
+
+            // Animate sun glow pulsation
+            glowPulseOffset += glowPulseSpeed;
+            sunGlow.material.opacity = 0.4 + Math.sin(glowPulseOffset) * glowPulseAmplitude;
+            sunGlow.scale.setScalar(1 + Math.sin(glowPulseOffset * 0.8) * glowPulseAmplitude * 0.5); // Subtle scale pulsation
+
+            // Orbit planets
+            planets.forEach(planet => {
+                planet.userData.angle += planet.userData.orbitalSpeed;
+                planet.position.x = Math.cos(planet.userData.angle) * planet.userData.orbitalRadius;
+                planet.position.z = Math.sin(planet.userData.angle) * planet.userData.orbitalRadius;
+                planet.rotation.y += 0.005; // Self-rotation
+
+                // Animate Moon for Earth
+                if (planet.userData.moon) {
+                    const moon = planet.userData.moon.object;
+                    const moonOrbitalRadius = planet.userData.moon.orbitalRadius;
+                    const moonOrbitalSpeed = planet.userData.moon.orbitalSpeed;
+                    planet.userData.moon.angle += moonOrbitalSpeed;
+
+                    moon.position.x = Math.cos(planet.userData.moon.angle) * moonOrbitalRadius;
+                    moon.position.z = Math.sin(planet.userData.moon.angle) * moonOrbitalRadius;
+                    moon.rotation.y += 0.01; // Moon self-rotation
+                }
+            });
+
+            controls.update(); // Only required if controls.enableDamping or controls.autoRotate are set to true
+            renderer.render(scene, camera);
+        }
+
+        // --- Raycasting for Clicks ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function onCanvasClick(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Update the raycaster with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+
+            // Calculate objects intersecting the ray
+            const intersects = raycaster.intersectObjects(planets);
+
+            if (intersects.length > 0) {
+                const clickedPlanet = intersects[0].object;
+                console.log("Clicked:", clickedPlanet.userData.name);
+                displayPlanetInfo(clickedPlanet.userData.name);
+
+                // Play click sound
+                if (!isSoundMuted && clickSound) {
+                    clickSound.triggerAttackRelease("C4", "8n");
+                }
+            }
+        }
+
+        canvas.addEventListener('click', onCanvasClick, false);
+
+        // --- Info Panel Logic ---
+        const infoPanel = document.getElementById('info-panel');
+        const planetNameElement = document.getElementById('planet-name');
+        const planetDescriptionElement = document.getElementById('planet-description');
+        const planetFactsElement = document.getElementById('planet-facts');
+        const closeButton = document.getElementById('close-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        closeButton.addEventListener('click', () => {
+            infoPanel.style.display = 'none';
+        });
+
+        async function displayPlanetInfo(planetName) {
+            loadingIndicator.style.display = 'block'; // Show loading indicator
+            infoPanel.style.display = 'none'; // Hide info panel while loading
+
+            try {
+                // Call Gemini API to get planet information
+                let chatHistory = [];
+                // Slightly rephrased prompt for robustness
+                const prompt = `Generate a concise summary and exactly 3 interesting facts about the planet ${planetName}. Present the facts as a bulleted list.`;
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // Canvas will provide this
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // Improved error logging: log the full response if not OK
+                if (!response.ok) {
+                    const errorBody = await response.json();
+                    console.error("API response not OK:", response.status, response.statusText, errorBody);
+                    throw new Error(`API error: ${response.statusText || 'Something went wrong'} - Details: ${JSON.stringify(errorBody)}`);
+                }
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+
+                    // Parse the text to extract description and facts
+                    const lines = text.split('\n');
+                    let description = '';
+                    let facts = [];
+                    let inFactsSection = false;
+
+                    for (const line of lines) {
+                        if (line.trim().startsWith('*')) {
+                            inFactsSection = true;
+                            facts.push(line.trim().substring(1).trim()); // Remove '*' and trim
+                        } else if (!inFactsSection && line.trim() !== '') {
+                            description += line.trim() + ' ';
+                        }
+                    }
+
+                    planetNameElement.textContent = planetName;
+                    planetDescriptionElement.textContent = description.trim();
+                    planetFactsElement.innerHTML = ''; // Clear previous facts
+                    facts.forEach(fact => {
+                        const li = document.createElement('li');
+                        li.textContent = fact;
+                        planetFactsElement.appendChild(li);
+                    });
+
+                    infoPanel.style.display = 'block'; // Show info panel
+                } else {
+                    planetNameElement.textContent = planetName;
+                    planetDescriptionElement.textContent = "Could not retrieve detailed information for this planet.";
+                    planetFactsElement.innerHTML = '';
+                    infoPanel.style.display = 'block';
+                    console.error("Unexpected API response structure:", result);
+                }
+            } catch (error) {
+                console.error("Error fetching planet info:", error);
+                planetNameElement.textContent = planetName;
+                planetDescriptionElement.textContent = `Failed to load information: ${error.message}. Please try again.`;
+                planetFactsElement.innerHTML = '';
+                infoPanel.style.display = 'block';
+            } finally {
+                loadingIndicator.style.display = 'none'; // Hide loading indicator
+            }
+        }
+
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start the animation loop when the window loads
+        window.onload = function () {
+            animate();
+            // Initialize audio when the user interacts (e.g., clicks the mute button)
+            // Tone.js requires user interaction to start the audio context.
+            // The mute button now serves as the trigger.
+        };
+
+    </script>
+</body>
+</html>
