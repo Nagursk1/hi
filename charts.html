@@ -1,1 +1,1870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Data Visualizer</title>
+    <!-- Tailwind CSS CDN for modern, responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Inter font and general layout */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light gray background */
+            color: #334155; /* Darker text color */
+        }
+        /* Style for the chart containers to act as distinct panes */
+        .chart-container {
+            background-color: #ffffff;
+            border-radius: 0.75rem; /* Rounded corners */
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+            margin-bottom: 1.5rem; /* Space below each chart pane */
+            min-height: 300px; /* Ensure charts have space */
+            display: flex; /* Make it a flex container */
+            flex-direction: column; /* Stack children vertically */
+            border: 1px solid #e2e8f0; /* Add a subtle border for clear separation */
+        }
+        /* Style for the actual plot area within the container */
+        .chart-plot-area {
+            flex-grow: 1; /* Allows the plot area to take up available vertical space */
+            width: 100%; /* Ensures it takes full width of its parent */
+            min-height: 250px; /* Minimum height for the plot itself */
+        }
+        /* Style for the chart footer */
+        .chart-footer {
+            padding-top: 0.75rem;
+            margin-top: 0.75rem; /* Space between plot and footer */
+            border-top: 1px solid #f0f4f8; /* Light border above footer */
+            text-align: center;
+            font-size: 0.875rem; /* text-sm */
+            color: #64748b; /* text-gray-500 */
+        }
+        /* Style for loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-size: 1.5rem;
+            color: #334155;
+            flex-direction: column;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* Blue spinner */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Style for custom message box */
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            z-index: 1001;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            display: none; /* Hidden by default */
+        }
+        .message-box button {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .message-box button:hover {
+            background-color: #2563eb;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>Processing data and generating visualizations...</p>
+    </div>
+
+    <!-- Custom Message Box -->
+    <div id="messageBox" class="message-box">
+        <p id="messageText" class="text-lg mb-4"></p>
+        <button id="messageBoxClose">OK</button>
+    </div>
+
+    <div class="max-w-7xl mx-auto bg-white p-6 sm:p-10 rounded-xl shadow-lg">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-center mb-8 text-blue-700">
+            Excel Data Visualizer
+        </h1>
+
+        <!-- File Upload Section -->
+        <div class="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
+            <label for="excelFile" class="block text-lg font-semibold text-blue-800 mb-3">
+                Upload your Excel File (.xlsx, .xls)
+            </label>
+            <input type="file" id="excelFile" accept=".xlsx, .xls"
+                   class="block w-full text-sm text-gray-700
+                          file:mr-4 file:py-2 file:px-4
+                          file:rounded-full file:border-0
+                          file:text-sm file:font-semibold
+                          file:bg-blue-100 file:text-blue-700
+                          hover:file:bg-blue-200 cursor-pointer">
+            <p class="text-sm text-gray-500 mt-2">
+                Your data will be processed directly in your browser. No data is uploaded to any server.
+            </p>
+        </div>
+
+        <!-- Data Paste Section -->
+        <div class="mb-8 p-6 bg-green-50 rounded-lg border border-green-200">
+            <label for="pasteData" class="block text-lg font-semibold text-green-800 mb-3">
+                Or Paste Data (Tab-separated or CSV)
+            </label>
+            <textarea id="pasteData" rows="6" placeholder="Paste your data here (e.g., from Excel, tab-separated or comma-separated values). First row should be headers."
+                      class="block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"></textarea>
+            <button id="processPastedDataBtn"
+                    class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md
+                           transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                Process Pasted Data
+            </button>
+            <p class="text-sm text-gray-500 mt-2">
+                Ensure data has headers in the first row.
+            </p>
+        </div>
+
+        <!-- Data Preview Section -->
+        <div id="dataPreviewSection" class="mb-8 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Data Preview (All Rows)</h2>
+            <div class="overflow-x-auto overflow-y-auto max-h-96 rounded-lg border border-gray-200">
+                <table id="dataPreviewTable" class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr id="dataPreviewHeaderRow"></tr>
+                    </thead>
+                    <tbody id="dataPreviewBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Data rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- AI Data Summary Section -->
+        <div id="aiSummarySection" class="mb-8 hidden p-6 bg-yellow-50 rounded-lg border border-yellow-200">
+            <h2 class="text-2xl font-bold text-yellow-800 mb-4">AI Data Summary</h2>
+            <button id="generateSummaryBtn"
+                    class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg shadow-md
+                           transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50">
+                Generate Data Summary
+            </button>
+            <div id="summaryOutput" class="mt-4 p-4 bg-yellow-100 rounded-md text-gray-700 hidden">
+                <!-- AI summary will be displayed here -->
+            </div>
+            <p class="text-sm text-gray-500 mt-2">
+                Note: This is a client-side, rule-based summary. Full AI analysis and PPT generation are beyond the scope of this application.
+            </p>
+        </div>
+
+        <!-- Auto-Suggested Visualizations Section -->
+        <div id="autoSuggestionsSection" class="mb-8 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">
+                Auto-Suggested Visualizations <span class="text-base font-normal text-gray-600">(Click to add)</span>
+            </h2>
+            <div id="autoSuggestionsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Auto-suggested chart buttons will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Custom Visualization Section -->
+        <div id="customVisualizationSection" class="mb-8 hidden p-6 bg-purple-50 rounded-lg border border-purple-200">
+            <h2 class="text-2xl font-bold text-purple-800 mb-4">Create Custom Visualization</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="chartTypeSelect" class="block text-sm font-medium text-gray-700 mb-1">Chart Type:</label>
+                    <select id="chartTypeSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="">Select Chart Type</option>
+                        <optgroup label="Basic Charts">
+                            <option value="bar">Bar Chart</option>
+                            <option value="stacked_bar">Stacked Bar Chart</option>
+                            <option value="grouped_bar">Grouped Bar Chart</option>
+                            <option value="line">Line Chart</option>
+                            <option value="area">Area Chart</option>
+                            <option value="combo_line_bar">Combo Chart (Line + Bar)</option>
+                            <option value="scatter">Scatter Plot</option>
+                            <option value="pie">Pie Chart</option>
+                            <option value="donut">Donut Chart</option>
+                        </optgroup>
+                        <optgroup label="Statistical & Distribution">
+                            <option value="histogram">Histogram</option>
+                            <option value="density">Density Plot</option>
+                            <option value="box">Box Plot</option>
+                            <option value="violin">Violin Plot</option>
+                            <option value="heatmap">Heatmap</option>
+                            <option value="correlation_matrix">Correlation Matrix</option>
+                            <option value="contour">Contour Plot</option>
+                        </optgroup>
+                        <optgroup label="Multi-Variable & Relationship">
+                            <option value="bubble">Bubble Chart</option>
+                            <option value="parallel_coordinates">Parallel Coordinates</option>
+                            <option value="lollipop">Lollipop Chart</option>
+                            <option value="dumbbell">Dumbbell Chart</option>
+                        </optgroup>
+                        <optgroup label="3D Charts">
+                            <option value="scatter3d">3D Scatter Plot</option>
+                            <option value="surface">3D Surface Plot</option>
+                            <option value="mesh3d">3D Mesh Plot</option>
+                        </optgroup>
+                        <optgroup label="Hierarchical & Flow">
+                            <option value="sunburst">Sunburst Chart</option>
+                            <option value="treemap">Treemap</option>
+                            <option value="funnel">Funnel Chart</option>
+                            <option value="sankey">Sankey Diagram</option>
+                            <option value="gantt">Gantt Chart</option>
+                        </optgroup>
+                        <optgroup label="Metric & Specialized">
+                            <option value="polar">Polar Chart</option>
+                            <option value="indicator_gauge">Indicator/Gauge</option>
+                            <option value="bullet">Bullet Chart</option>
+                            <option value="waterfall">Waterfall Chart</option>
+                            <option value="table_plotly">Interactive Table</option>
+                            <option value="sparkline">Sparkline (Mini Line)</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div>
+                    <label for="xAxisSelect" class="block text-sm font-medium text-gray-700 mb-1">X-Axis Column:</label>
+                    <select id="xAxisSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="">Select X-Axis</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="yAxisSelect" class="block text-sm font-medium text-gray-700 mb-1">Y-Axis Column:</label>
+                    <select id="yAxisSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="">Select Y-Axis</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="zAxisSelect" class="block text-sm font-medium text-gray-700 mb-1">Z-Axis/Size/Color/Other Column (Optional):</label>
+                    <select id="zAxisSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="">Select Z-Axis</option>
+                    </select>
+                </div>
+            </div>
+            <button id="generateChartBtn"
+                    class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-md
+                           transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50">
+                Generate Custom Chart
+            </button>
+        </div>
+
+        <!-- Chart Display Area -->
+        <div id="chartDisplayArea" class="mt-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 hidden" id="chartDisplayTitle">Your Visualizations</h2>
+            <div id="chartsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Charts will be rendered here -->
+            </div>
+            <p class="text-sm text-gray-500 mt-4 text-center">
+                To download a chart as an image (PNG, SVG) or JSON, hover over the chart and use the Plotly.js toolbar (camera icon).
+            </p>
+        </div>
+    </div>
+
+    <!-- SheetJS (xlsx.full.min.js) for Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Plotly.js for charting -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+    <script>
+        // Global variables to store parsed data and elements
+        let excelData = [];
+        let dataHeaders = [];
+        const MAX_AUTO_SUGGESTIONS = 10; // Limit for auto-suggested charts
+
+        // Get references to DOM elements
+        const excelFileInput = document.getElementById('excelFile');
+        const pasteDataInput = document.getElementById('pasteData'); // New paste data input
+        const processPastedDataBtn = document.getElementById('processPastedDataBtn'); // New button
+        const dataPreviewSection = document.getElementById('dataPreviewSection');
+        const dataPreviewHeaderRow = document.getElementById('dataPreviewHeaderRow');
+        const dataPreviewBody = document.getElementById('dataPreviewBody');
+        const aiSummarySection = document.getElementById('aiSummarySection'); // New AI summary section
+        const generateSummaryBtn = document.getElementById('generateSummaryBtn'); // New AI summary button
+        const summaryOutput = document.getElementById('summaryOutput'); // New AI summary output div
+        const autoSuggestionsSection = document.getElementById('autoSuggestionsSection');
+        const autoSuggestionsContainer = document.getElementById('autoSuggestionsContainer');
+        const customVisualizationSection = document.getElementById('customVisualizationSection');
+        const chartTypeSelect = document.getElementById('chartTypeSelect');
+        const xAxisSelect = document.getElementById('xAxisSelect');
+        const yAxisSelect = document.getElementById('yAxisSelect');
+        const zAxisSelect = document.getElementById('zAxisSelect');
+        const generateChartBtn = document.getElementById('generateChartBtn');
+        const chartsContainer = document.getElementById('chartsContainer');
+        const chartDisplayTitle = document.getElementById('chartDisplayTitle');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const messageBoxClose = document.getElementById('messageBoxClose');
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays a custom message box instead of alert().
+         * @param {string} message The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.style.display = 'block';
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.style.display = 'none';
+        }
+
+        /**
+         * Shows the loading overlay.
+         */
+        function showLoading() {
+            loadingOverlay.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the loading overlay.
+         */
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        /**
+         * Infers the data type of a given value.
+         * @param {*} value The value to infer the type for.
+         * @returns {string} 'number', 'date', 'boolean', or 'string'.
+         */
+        function inferDataType(value) {
+            if (typeof value === 'number' && !isNaN(value)) {
+                return 'number';
+            }
+            if (typeof value === 'boolean') {
+                return 'boolean';
+            }
+            // Attempt to parse as date (simple check)
+            if (typeof value === 'string' && !isNaN(new Date(value))) {
+                const date = new Date(value);
+                // Check if the date is valid and not just a number interpreted as year
+                if (date.getFullYear() > 1000 && date.getFullYear() < 3000) {
+                    return 'date';
+                }
+            }
+            return 'string';
+        }
+
+        /**
+         * Gets the data type for each column based on the first few non-empty values.
+         * @param {Array<Object>} data The parsed Excel data.
+         * @param {Array<string>} headers The column headers.
+         * @returns {Object<string, string>} An object mapping column names to their inferred types.
+         */
+        function getColumnTypes(data, headers) {
+            const columnTypes = {};
+            headers.forEach(header => {
+                let inferredType = 'string'; // Default to string
+                for (let i = 0; i < Math.min(data.length, 100); i++) { // Check first 100 rows
+                    const value = data[i][header];
+                    if (value !== undefined && value !== null && value !== '') {
+                        inferredType = inferDataType(value);
+                        if (inferredType !== 'string') { // If we find a non-string type, assume that
+                            break;
+                        }
+                    }
+                }
+                columnTypes[header] = inferredType;
+            });
+            return columnTypes;
+        }
+
+        /**
+         * Filters columns by inferred data type.
+         * @param {Object<string, string>} columnTypes Object mapping column names to types.
+         * @param {string} type The desired type ('number', 'string', 'date').
+         * @returns {Array<string>} An array of column names matching the type.
+         */
+        function getColumnsByType(columnTypes, type) {
+            return Object.keys(columnTypes).filter(col => columnTypes[col] === type);
+        }
+
+        /**
+         * Safely converts a value to a number, treating null, undefined, empty string, and 'NA' as 0.
+         * @param {*} value The value to convert.
+         * @returns {number} The numerical value or 0 if not a valid number/blank/NA.
+         */
+        function getNumericValue(value) {
+            if (value === null || value === undefined || value === '' || String(value).toUpperCase() === 'NA') {
+                return 0;
+            }
+            const num = parseFloat(value);
+            return isNaN(num) ? 0 : num;
+        }
+
+        /**
+         * Processes data (from Excel or paste) and updates the UI.
+         * @param {Array<Object>} data The parsed data.
+         */
+        async function processData(data) {
+            excelData = data;
+            if (excelData.length === 0) {
+                showMessageBox("The data is empty or could not be parsed.");
+                hideLoading();
+                return;
+            }
+
+            dataHeaders = Object.keys(excelData[0]);
+
+            displayDataPreview(excelData, dataHeaders);
+            populateCustomChartControls(dataHeaders);
+            await autoSuggestVisualizations(excelData, dataHeaders);
+
+            dataPreviewSection.classList.remove('hidden');
+            aiSummarySection.classList.remove('hidden'); // Show AI summary section
+            autoSuggestionsSection.classList.remove('hidden');
+            customVisualizationSection.classList.remove('hidden');
+            chartDisplayTitle.classList.remove('hidden');
+            hideLoading();
+        }
+
+        // --- Core Logic Functions ---
+
+        /**
+         * Handles the Excel file upload event.
+         * @param {Event} event The file input change event.
+         */
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            showLoading();
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    await processData(jsonData);
+                } catch (error) {
+                    console.error("Error parsing Excel file:", error);
+                    showMessageBox("Error processing Excel file. Please ensure it's a valid .xlsx or .xls format.");
+                } finally {
+                    hideLoading();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Handles pasted data.
+         */
+        async function handlePastedData() {
+            const pastedText = pasteDataInput.value.trim();
+            if (!pastedText) {
+                showMessageBox("Please paste some data to process.");
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Attempt to parse as CSV first, then tab-separated
+                let parsedData;
+                if (pastedText.includes(',')) {
+                    // Assume CSV
+                    const lines = pastedText.split('\n');
+                    const headers = lines[0].split(',').map(h => h.trim());
+                    parsedData = lines.slice(1).map(line => {
+                        const values = line.split(',');
+                        const row = {};
+                        headers.forEach((header, i) => {
+                            row[header] = values[i] ? values[i].trim() : '';
+                        });
+                        return row;
+                    });
+                } else {
+                    // Assume tab-separated (TSV)
+                    const lines = pastedText.split('\n');
+                    const headers = lines[0].split('\t').map(h => h.trim());
+                    parsedData = lines.slice(1).map(line => {
+                        const values = line.split('\t');
+                        const row = {};
+                        headers.forEach((header, i) => {
+                            row[header] = values[i] ? values[i].trim() : '';
+                        });
+                        return row;
+                    });
+                }
+
+                await processData(parsedData);
+
+            } catch (error) {
+                console.error("Error parsing pasted data:", error);
+                showMessageBox("Error processing pasted data. Please ensure it's valid CSV or tab-separated format with headers.");
+            } finally {
+                hideLoading();
+            }
+        }
+
+
+        /**
+         * Displays a preview of the uploaded data in a table.
+         * @param {Array<Object>} data The parsed Excel data.
+         * @param {Array<string>} headers The column headers.
+         */
+        function displayDataPreview(data, headers) {
+            dataPreviewHeaderRow.innerHTML = '';
+            dataPreviewBody.innerHTML = '';
+
+            // Create table headers
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
+                dataPreviewHeaderRow.appendChild(th);
+            });
+
+            // Create table rows for preview (all rows now)
+            for (let i = 0; i < data.length; i++) {
+                const rowData = data[i];
+                const tr = document.createElement('tr');
+                tr.className = i % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = rowData[header] !== undefined && rowData[header] !== null ? rowData[header] : '';
+                    td.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-900';
+                    tr.appendChild(td);
+                });
+                dataPreviewBody.appendChild(tr);
+            }
+        }
+
+        /**
+         * Populates the dropdowns for custom chart creation with available column headers.
+         * @param {Array<string>} headers The column headers.
+         */
+        function populateCustomChartControls(headers) {
+            // Clear previous options
+            xAxisSelect.innerHTML = '<option value="">Select X-Axis</option>';
+            yAxisSelect.innerHTML = '<option value="">Select Y-Axis</option>';
+            zAxisSelect.innerHTML = '<option value="">Select Z-Axis</option>'; // Clear Z-axis too
+
+            headers.forEach(header => {
+                const optionX = document.createElement('option');
+                optionX.value = header;
+                optionX.textContent = header;
+                xAxisSelect.appendChild(optionX);
+
+                const optionY = document.createElement('option');
+                optionY.value = header;
+                optionY.textContent = header;
+                yAxisSelect.appendChild(optionY);
+
+                const optionZ = document.createElement('option');
+                optionZ.value = header;
+                optionZ.textContent = header;
+                zAxisSelect.appendChild(optionZ); // Populate Z-axis
+            });
+        }
+
+        /**
+         * Generates a basic text summary of the loaded data.
+         */
+        function generateDataSummary() {
+            if (excelData.length === 0) {
+                summaryOutput.innerHTML = "<p class='text-red-600'>No data loaded to summarize.</p>";
+                summaryOutput.classList.remove('hidden');
+                return;
+            }
+
+            const numRows = excelData.length;
+            const numCols = dataHeaders.length;
+            const columnTypes = getColumnTypes(excelData, dataHeaders);
+
+            let summaryHtml = `<p><strong>Data Overview:</strong></p>`;
+            summaryHtml += `<p>Total Rows: ${numRows}</p>`;
+            summaryHtml += `<p>Total Columns: ${numCols}</p>`;
+            summaryHtml += `<p><strong>Column Types:</strong></p><ul>`;
+
+            const typeCounts = {};
+            dataHeaders.forEach(header => {
+                const type = columnTypes[header];
+                typeCounts[type] = (typeCounts[type] || 0) + 1;
+                summaryHtml += `<li><strong>${header}</strong>: ${type}</li>`;
+            });
+            summaryHtml += `</ul>`;
+
+            summaryHtml += `<p><strong>Basic Insights:</strong></p><ul>`;
+            if (typeCounts['number'] > 0) {
+                const numericCols = getColumnsByType(columnTypes, 'number');
+                numericCols.slice(0, 3).forEach(col => { // Summarize first 3 numeric cols
+                    const values = excelData.map(row => getNumericValue(row[col]));
+                    const sum = values.reduce((a, b) => a + b, 0);
+                    const avg = sum / values.length;
+                    const max = Math.max(...values);
+                    const min = Math.min(...values);
+                    summaryHtml += `<li><strong>${col}</strong>: Sum = ${sum.toFixed(2)}, Avg = ${avg.toFixed(2)}, Min = ${min.toFixed(2)}, Max = ${max.toFixed(2)}</li>`;
+                });
+            }
+            if (typeCounts['string'] > 0) {
+                const categoricalCols = getColumnsByType(columnTypes, 'string');
+                categoricalCols.slice(0, 2).forEach(col => { // Summarize first 2 categorical cols
+                    const uniqueValues = [...new Set(excelData.map(row => row[col]))];
+                    summaryHtml += `<li><strong>${col}</strong>: ${uniqueValues.length} unique categories. E.g., ${uniqueValues.slice(0, 3).join(', ')}${uniqueValues.length > 3 ? '...' : ''}</li>`;
+                });
+            }
+            summaryHtml += `</ul>`;
+
+            summaryOutput.innerHTML = summaryHtml;
+            summaryOutput.classList.remove('hidden');
+        }
+
+
+        /**
+         * Auto-suggests visualizations based on data types and relationships.
+         * @param {Array<Object>} data The parsed Excel data.
+         * @param {Array<string>} headers The column headers.
+         */
+        async function autoSuggestVisualizations(data, headers) {
+            autoSuggestionsContainer.innerHTML = ''; // Clear previous suggestions
+            // Do NOT clear chartsContainer here, as we want to ADD charts from auto-suggestions
+
+            const columnTypes = getColumnTypes(data, headers);
+            const numericCols = getColumnsByType(columnTypes, 'number');
+            const categoricalCols = getColumnsByType(columnTypes, 'string'); // Treating all non-numeric/date as categorical for simplicity
+            const dateCols = getColumnsByType(columnTypes, 'date');
+
+            const suggestions = [];
+
+            // Basic Charts
+            if (dateCols.length > 0 && numericCols.length > 0) {
+                suggestions.push({ type: 'line', xCol: dateCols[0], yCol: numericCols[0], zCol: null, title: `Line Chart: ${numericCols[0]} over ${dateCols[0]}` });
+                suggestions.push({ type: 'area', xCol: dateCols[0], yCol: numericCols[0], zCol: null, title: `Area Chart: ${numericCols[0]} over ${dateCols[0]}` });
+            }
+            if (numericCols.length >= 2) {
+                suggestions.push({ type: 'scatter', xCol: numericCols[0], yCol: numericCols[1], zCol: null, title: `Scatter Plot: ${numericCols[1]} vs ${numericCols[0]}` });
+            }
+            if (categoricalCols.length > 0 && numericCols.length > 0) {
+                suggestions.push({ type: 'bar', xCol: categoricalCols[0], yCol: numericCols[0], zCol: null, title: `Bar Chart: ${numericCols[0]} by ${categoricalCols[0]}` });
+                const uniqueCategories = [...new Set(data.map(row => row[categoricalCols[0]]))];
+                if (uniqueCategories.length > 1 && uniqueCategories.length <= 15) {
+                    suggestions.push({ type: 'pie', xCol: categoricalCols[0], yCol: numericCols[0], zCol: null, title: `Pie Chart: Proportion of ${numericCols[0]} by ${categoricalCols[0]}` });
+                }
+            }
+            // Stacked Bar (requires grouping and summing)
+            if (categoricalCols.length >= 2 && numericCols.length > 0) {
+                suggestions.push({ type: 'stacked_bar', xCol: categoricalCols[0], yCol: numericCols[0], zCol: categoricalCols[1], title: `Stacked Bar: ${numericCols[0]} by ${categoricalCols[0]} & ${categoricalCols[1]}` });
+            }
+            // Grouped Bar (requires grouping)
+            if (categoricalCols.length >= 2 && numericCols.length > 0) {
+                suggestions.push({ type: 'grouped_bar', xCol: categoricalCols[0], yCol: numericCols[0], zCol: categoricalCols[1], title: `Grouped Bar: ${numericCols[0]} by ${categoricalCols[0]} & ${categoricalCols[1]}` });
+            }
+            // Combo Chart
+            if (dateCols.length > 0 && numericCols.length >= 2) {
+                suggestions.push({ type: 'combo_line_bar', xCol: dateCols[0], yCol: numericCols[0], zCol: numericCols[1], title: `Combo Chart: ${numericCols[0]} & ${numericCols[1]} over ${dateCols[0]}` });
+            }
+
+
+            // Statistical Charts
+            numericCols.slice(0, 2).forEach(col => {
+                suggestions.push({ type: 'histogram', xCol: col, yCol: null, zCol: null, title: `Histogram: Distribution of ${col}` });
+                suggestions.push({ type: 'box', xCol: col, yCol: null, zCol: null, title: `Box Plot: Spread of ${col}` });
+                suggestions.push({ type: 'violin', xCol: col, yCol: null, zCol: null, title: `Violin Plot: Distribution of ${col}` });
+                suggestions.push({ type: 'density', xCol: col, yCol: null, zCol: null, title: `Density Plot: ${col}` });
+            });
+            if (categoricalCols.length > 0 && numericCols.length > 0) {
+                 suggestions.push({ type: 'violin', xCol: categoricalCols[0], yCol: numericCols[0], zCol: null, title: `Violin Plot: ${numericCols[0]} by ${categoricalCols[0]}` });
+            }
+            if (data.length > 1 && (categoricalCols.length >= 2 || (categoricalCols.length >=1 && numericCols.length >=1) || numericCols.length >= 2)) {
+                const xHeat = categoricalCols[0] || numericCols[0];
+                const yHeat = categoricalCols[1] || numericCols[1];
+                const zHeat = numericCols[0];
+                if (xHeat && yHeat && zHeat && xHeat !== yHeat) {
+                     suggestions.push({ type: 'heatmap', xCol: xHeat, yCol: yHeat, zCol: zHeat, title: `Heatmap: ${zHeat} by ${xHeat} and ${yHeat}` });
+                }
+            }
+            if (numericCols.length >= 3) {
+                suggestions.push({ type: 'contour', xCol: numericCols[0], yCol: numericCols[1], zCol: numericCols[2], title: `Contour Plot: ${numericCols[2]} over ${numericCols[0]}, ${numericCols[1]}` });
+            }
+            // Correlation Matrix (specialized heatmap)
+            if (numericCols.length >= 2) {
+                suggestions.push({ type: 'correlation_matrix', xCol: null, yCol: null, zCol: null, title: `Correlation Matrix` });
+            }
+
+
+            // Multi-Variable Charts
+            if (numericCols.length >= 3) {
+                suggestions.push({ type: 'bubble', xCol: numericCols[0], yCol: numericCols[1], zCol: numericCols[2], title: `Bubble Chart: ${numericCols[1]} vs ${numericCols[0]} (Size by ${numericCols[2]})` });
+                suggestions.push({ type: 'parallel_coordinates', xCol: null, yCol: null, zCol: null, title: `Parallel Coordinates Plot` });
+            }
+            // Lollipop Chart
+            if (categoricalCols.length > 0 && numericCols.length > 0) {
+                suggestions.push({ type: 'lollipop', xCol: categoricalCols[0], yCol: numericCols[0], zCol: null, title: `Lollipop Chart: ${numericCols[0]} by ${categoricalCols[0]}` });
+            }
+            // Dumbbell Chart (needs two numeric and one categorical)
+            if (numericCols.length >= 2 && categoricalCols.length > 0) {
+                suggestions.push({ type: 'dumbbell', xCol: numericCols[0], yCol: numericCols[1], zCol: categoricalCols[0], title: `Dumbbell Chart: ${numericCols[0]} to ${numericCols[1]} by ${categoricalCols[0]}` });
+            }
+
+            // 3D Charts
+            if (numericCols.length >= 3) {
+                suggestions.push({ type: 'scatter3d', xCol: numericCols[0], yCol: numericCols[1], zCol: numericCols[2], title: `3D Scatter Plot: ${numericCols[0]}, ${numericCols[1]}, ${numericCols[2]}` });
+                suggestions.push({ type: 'surface', xCol: numericCols[0], yCol: numericCols[1], zCol: numericCols[2], title: `3D Surface Plot` });
+                suggestions.push({ type: 'mesh3d', xCol: numericCols[0], yCol: numericCols[1], zCol: numericCols[2], title: `3D Mesh Plot` });
+            }
+
+            // Hierarchical/Flow Charts
+            if (categoricalCols.length >= 2 && numericCols.length > 0) {
+                suggestions.push({ type: 'sunburst', xCol: categoricalCols[0], yCol: categoricalCols[1], zCol: numericCols[0], title: `Sunburst Chart` });
+                suggestions.push({ type: 'treemap', xCol: categoricalCols[0], yCol: categoricalCols[1], zCol: numericCols[0], title: `Treemap` });
+            }
+            if (categoricalCols.length > 0 && numericCols.length > 0) {
+                suggestions.push({ type: 'funnel', xCol: categoricalCols[0], yCol: numericCols[0], zCol: null, title: `Funnel Chart` });
+            }
+            // Gantt Chart (requires specific date/task columns)
+            const hasStartEndDates = dateCols.length >= 2 && categoricalCols.length > 0;
+            if (hasStartEndDates) {
+                suggestions.push({ type: 'gantt', xCol: dateCols[0], yCol: dateCols[1], zCol: categoricalCols[0], title: `Gantt Chart: ${categoricalCols[0]} Tasks` });
+            }
+
+
+            // Metric & Specialized Charts
+            if (numericCols.length >= 2) {
+                suggestions.push({ type: 'polar', xCol: numericCols[0], yCol: numericCols[1], zCol: null, title: `Polar Chart` });
+            }
+            if (numericCols.length > 0) {
+                 suggestions.push({ type: 'indicator_gauge', xCol: numericCols[0], yCol: null, zCol: null, title: `Indicator/Gauge: ${numericCols[0]}` });
+                 suggestions.push({ type: 'bullet', xCol: numericCols[0], yCol: null, zCol: null, title: `Bullet Chart: ${numericCols[0]}` });
+                 suggestions.push({ type: 'waterfall', xCol: categoricalCols[0] || headers[0], yCol: numericCols[0], zCol: null, title: `Waterfall Chart: ${numericCols[0]}` });
+            }
+            // Interactive Table (always possible)
+            suggestions.push({ type: 'table_plotly', xCol: null, yCol: null, zCol: null, title: `Interactive Data Table` });
+            // Sparkline (as a mini line chart)
+            if (numericCols.length > 0) {
+                suggestions.push({ type: 'sparkline', xCol: headers[0], yCol: numericCols[0], zCol: null, title: `Sparkline: ${numericCols[0]}` });
+            }
+
+
+            // Limit to MAX_AUTO_SUGGESTIONS
+            const finalSuggestions = suggestions.slice(0, MAX_AUTO_SUGGESTIONS);
+
+            // Create buttons for each suggestion
+            finalSuggestions.forEach((suggestion, index) => {
+                const button = document.createElement('button');
+                button.className = `p-4 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold
+                                   transition duration-200 ease-in-out transform hover:scale-105
+                                   flex flex-col items-center justify-center text-center`;
+                button.innerHTML = `
+                    <span class="text-xl mb-2">📊</span>
+                    <span>${suggestion.title}</span>
+                `;
+                // When an auto-suggestion button is clicked, ADD the chart (do not clear existing)
+                button.onclick = () => renderChart(suggestion.type, suggestion.xCol, suggestion.yCol, suggestion.zCol, suggestion.title, false);
+                autoSuggestionsContainer.appendChild(button);
+            });
+
+            if (finalSuggestions.length === 0) {
+                autoSuggestionsContainer.innerHTML = '<p class="text-gray-600">No automatic suggestions could be generated based on the data structure. Try creating a custom chart.</p>';
+            }
+        }
+
+        /**
+         * Renders a chart using Plotly.js based on selected parameters.
+         * @param {string} chartType The type of chart (e.g., 'bar', 'line', 'scatter').
+         * @param {string} xCol The header for the X-axis column.
+         * @param {string} yCol The header for the Y-axis column.
+         * @param {string} zCol The header for the Z-axis/Size/Color column (optional).
+         * @param {string} title The title of the chart.
+         * @param {boolean} clearContainer Optional. If true, clears the chartsContainer before rendering. Defaults to true.
+         */
+        function renderChart(chartType, xCol, yCol, zCol, title, clearContainer = true) {
+            // Clear existing charts in the main display area ONLY if clearContainer is true
+            if (clearContainer) {
+                chartsContainer.innerHTML = '';
+            }
+
+            if (!excelData || excelData.length === 0) {
+                showMessageBox("Please upload or paste data first.");
+                return;
+            }
+
+            // Validate selected columns for the chart type
+            const columnTypes = getColumnTypes(excelData, dataHeaders);
+            const xColType = columnTypes[xCol];
+            const yColType = columnTypes[yCol];
+            const zColType = columnTypes[zCol]; // Get type for Z-axis
+
+            let dataForPlotly = [];
+            let layout = {
+                title: title,
+                font: { family: 'Inter, sans-serif' }, /* FIX: Corrected font family string */
+                paper_bgcolor: 'rgba(0,0,0,0)', // Transparent background
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { t: 50, b: 50, l: 50, r: 50 }, // Adjust margins for better fit
+                hovermode: 'closest' // Improves hover interaction
+            };
+
+            // Prepare data based on chart type
+            switch (chartType) {
+                case 'bar':
+                    if (!xCol || !yCol) { showMessageBox("Select both X and Y axis for Bar Chart."); return; }
+                    if (xColType === 'number' && yColType === 'number') {
+                        showMessageBox("Bar chart usually works best with one categorical (X) and one numerical (Y) column. Consider a Scatter Plot instead.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                        y: excelData.map(row => (yColType === 'number' ? getNumericValue(row[yCol]) : row[yCol])),
+                        type: 'bar',
+                        marker: { color: '#4c78a8' } // Default bar color
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'stacked_bar':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X (category), Y (value), and Z (stacking group) columns for Stacked Bar Chart."); return; }
+                    if (yColType !== 'number') { showMessageBox("Stacked Bar Chart Y (value) must be numerical."); return; }
+
+                    // Group data by X-axis and Z-axis for stacking
+                    const stackedData = {};
+                    excelData.forEach(row => {
+                        const xVal = row[xCol];
+                        const zVal = row[zCol];
+                        const yVal = getNumericValue(row[yCol]);
+                        if (!stackedData[zVal]) stackedData[zVal] = {};
+                        stackedData[zVal][xVal] = (stackedData[zVal][xVal] || 0) + yVal;
+                    });
+
+                    // Create traces for each unique Z-value
+                    dataForPlotly = Object.keys(stackedData).map(zGroup => ({
+                        x: Object.keys(stackedData[zGroup]),
+                        y: Object.values(stackedData[zGroup]),
+                        name: zGroup,
+                        type: 'bar'
+                    }));
+                    layout.barmode = 'stack';
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'grouped_bar':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X (category), Y (value), and Z (grouping) columns for Grouped Bar Chart."); return; }
+                    if (yColType !== 'number') { showMessageBox("Grouped Bar Chart Y (value) must be numerical."); return; }
+
+                    // Group data by Z-axis for separate bars
+                    const groupedData = {};
+                    excelData.forEach(row => {
+                        const xVal = row[xCol];
+                        const zVal = row[zCol];
+                        const yVal = getNumericValue(row[yCol]);
+                        if (!groupedData[zVal]) groupedData[zVal] = {};
+                        groupedData[zVal][xVal] = (groupedData[zVal][xVal] || 0) + yVal;
+                    });
+
+                    // Create traces for each unique Z-value
+                    dataForPlotly = Object.keys(groupedData).map(zGroup => ({
+                        x: Object.keys(groupedData[zGroup]),
+                        y: Object.values(groupedData[zGroup]),
+                        name: zGroup,
+                        type: 'bar'
+                    }));
+                    layout.barmode = 'group';
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'line':
+                    if (!xCol || !yCol) { showMessageBox("Select both X and Y axis for Line Chart."); return; }
+                    if (xColType !== 'date' && xColType !== 'number') {
+                        showMessageBox("Line chart X-axis typically requires a Date or Number column.");
+                        return;
+                    }
+                    if (yColType !== 'number') {
+                        showMessageBox("Line chart Y-axis typically requires a Number column.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                        y: excelData.map(row => (yColType === 'number' ? getNumericValue(row[yCol]) : row[yCol])),
+                        mode: 'lines+markers',
+                        type: 'scatter',
+                        line: { color: '#e45756' } // Default line color
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'area':
+                    if (!xCol || !yCol) { showMessageBox("Select both X and Y axis for Area Chart."); return; }
+                    if (xColType !== 'date' && xColType !== 'number') {
+                        showMessageBox("Area chart X-axis typically requires a Date or Number column.");
+                        return;
+                    }
+                    if (yColType !== 'number') {
+                        showMessageBox("Area chart Y-axis typically requires a Number column.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                        y: excelData.map(row => (yColType === 'number' ? getNumericValue(row[yCol]) : row[yCol])),
+                        fill: 'tozeroy', // Fills to the zero line
+                        mode: 'lines',
+                        type: 'scatter',
+                        line: { color: '#2ca02c' } // Default area outline color
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'combo_line_bar':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y (for bar), and Z (for line) columns for Combo Chart."); return; }
+                    if (yColType !== 'number' || zColType !== 'number') { showMessageBox("Combo Chart Y and Z axes must be numerical."); return; }
+
+                    dataForPlotly = [
+                        { // Bar trace
+                            x: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                            y: excelData.map(row => getNumericValue(row[yCol])),
+                            type: 'bar',
+                            name: yCol,
+                            marker: { color: '#4c78a8' }
+                        },
+                        { // Line trace
+                            x: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                            y: excelData.map(row => getNumericValue(row[zCol])),
+                            mode: 'lines+markers',
+                            type: 'scatter',
+                            name: zCol,
+                            yaxis: 'y2', // Use a secondary Y-axis
+                            line: { color: '#e45756' }
+                        }
+                    ];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    layout.yaxis2 = {
+                        title: zCol,
+                        overlaying: 'y',
+                        side: 'right'
+                    };
+                    layout.legend = { orientation: "h", xanchor: "center", x: 0.5, y: -0.2 };
+                    break;
+                case 'scatter':
+                    if (!xCol || !yCol) { showMessageBox("Select both X and Y axis for Scatter Plot."); return; }
+                    if (xColType !== 'number' || yColType !== 'number') {
+                        showMessageBox("Scatter plot requires both X and Y axes to be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        mode: 'markers',
+                        type: 'scatter',
+                        marker: { color: '#f58518' } // Default scatter color
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'bubble':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z (size) columns for Bubble Chart."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("Bubble chart requires X, Y, and Size (Z) axes to be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        mode: 'markers',
+                        marker: {
+                            size: excelData.map(row => getNumericValue(row[zCol])),
+                            sizemode: 'area',
+                            sizeref: 2 * Math.max(...excelData.map(row => getNumericValue(row[zCol]))) / (40**2), // Adjust size scaling
+                            sizemin: 4,
+                            color: excelData.map(row => getNumericValue(row[zCol])), // Color by Z
+                            colorscale: 'Viridis', // Example colorscale
+                            showscale: true
+                        },
+                        type: 'scatter'
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'pie':
+                    if (!xCol || !yCol) { showMessageBox("Select both X (labels) and Y (values) axis for Pie Chart."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Pie chart values (Y-axis) must be numerical.");
+                        return;
+                    }
+                    // For pie charts, we need to aggregate data if X is categorical
+                    const aggregatedData = {};
+                    excelData.forEach(row => {
+                        const category = row[xCol];
+                        const value = getNumericValue(row[yCol]); // Use getNumericValue for pie chart values
+                        if (!isNaN(value)) { // Ensure value is a number after conversion
+                            aggregatedData[category] = (aggregatedData[category] || 0) + value;
+                        }
+                    });
+                    dataForPlotly = [{
+                        labels: Object.keys(aggregatedData),
+                        values: Object.values(aggregatedData),
+                        type: 'pie',
+                        marker: {
+                            colors: ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+                        }
+                    }];
+                    layout.showlegend = true;
+                    layout.legend = {
+                        orientation: "h",
+                        xanchor: "center",
+                        x: 0.5,
+                        y: -0.2
+                    };
+                    break;
+                case 'donut':
+                    if (!xCol || !yCol) { showMessageBox("Select both X (labels) and Y (values) axis for Donut Chart."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Donut chart values (Y-axis) must be numerical.");
+                        return;
+                    }
+                    const aggregatedDonutData = {};
+                    excelData.forEach(row => {
+                        const category = row[xCol];
+                        const value = getNumericValue(row[yCol]);
+                        if (!isNaN(value)) {
+                            aggregatedDonutData[category] = (aggregatedDonutData[category] || 0) + value;
+                        }
+                    });
+                    dataForPlotly = [{
+                        labels: Object.keys(aggregatedDonutData),
+                        values: Object.values(aggregatedDonutData),
+                        type: 'pie',
+                        hole: 0.4, // This makes it a donut chart
+                        marker: {
+                            colors: ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+                        }
+                    }];
+                    layout.showlegend = true;
+                    layout.legend = {
+                        orientation: "h",
+                        xanchor: "center",
+                        x: 0.5,
+                        y: -0.2
+                    };
+                    break;
+                case 'histogram':
+                    if (!xCol) { showMessageBox("Select X axis for Histogram."); return; }
+                    if (xColType !== 'number') {
+                        showMessageBox("Histogram X-axis must be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        type: 'histogram',
+                        marker: { color: '#6a9f58' } // Default histogram color
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: 'Count' };
+                    break;
+                case 'density':
+                    if (!xCol) { showMessageBox("Select X axis for Density Plot."); return; }
+                    if (xColType !== 'number') {
+                        showMessageBox("Density Plot X-axis must be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        type: 'histogram',
+                        histnorm: 'density', // Normalize to density
+                        marker: { color: '#7f7f7f' }
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: 'Density' };
+                    break;
+                case 'box':
+                    if (!xCol) { showMessageBox("Select X axis for Box Plot."); return; }
+                    if (xColType !== 'number') {
+                        showMessageBox("Box Plot X-axis must be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        y: excelData.map(row => getNumericValue(row[xCol])),
+                        type: 'box',
+                        marker: { color: '#9d7660' } // Default box plot color
+                    }];
+                    layout.yaxis = { title: xCol };
+                    break;
+                case 'violin':
+                    if (!xCol) { showMessageBox("Select X axis (or Y for vertical) for Violin Plot."); return; }
+                    if (xColType !== 'number' && yColType !== 'number') { // Allow either X or Y to be numeric
+                        showMessageBox("Violin plot requires at least one numerical axis.");
+                        return;
+                    }
+                    if (xColType === 'number' && !yCol) { // Single numeric column
+                        dataForPlotly = [{
+                            y: excelData.map(row => getNumericValue(row[xCol])),
+                            type: 'violin',
+                            box: { visible: true },
+                            meanline: { visible: true },
+                            marker: { color: '#7b4173' } // Default violin color
+                        }];
+                        layout.yaxis = { title: xCol };
+                    } else if (xCol && yCol && yColType === 'number') { // Categorical X, Numeric Y
+                         dataForPlotly = [{
+                            x: excelData.map(row => row[xCol]),
+                            y: excelData.map(row => getNumericValue(row[yCol])),
+                            type: 'violin',
+                            box: { visible: true },
+                            meanline: { visible: true },
+                            marker: { color: '#7b4173' }
+                        }];
+                        layout.xaxis = { title: xCol };
+                        layout.yaxis = { title: yCol };
+                    } else {
+                        showMessageBox("Invalid column selection for Violin Plot. Needs one numeric or one categorical and one numeric.");
+                        return;
+                    }
+                    break;
+                case 'heatmap':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z (intensity) columns for Heatmap."); return; }
+                    if (zColType !== 'number') {
+                        showMessageBox("Heatmap Z (intensity) axis must be numerical.");
+                        return;
+                    }
+
+                    // Prepare data for heatmap: create a matrix of Z values
+                    const xValuesHeatmap = [...new Set(excelData.map(row => row[xCol]))];
+                    const yValuesHeatmap = [...new Set(excelData.map(row => row[yCol]))];
+                    const zMatrixHeatmap = Array(yValuesHeatmap.length).fill(0).map(() => Array(xValuesHeatmap.length).fill(0));
+
+                    excelData.forEach(row => {
+                        const xIdx = xValuesHeatmap.indexOf(row[xCol]);
+                        const yIdx = yValuesHeatmap.indexOf(row[yCol]);
+                        if (xIdx !== -1 && yIdx !== -1) {
+                            zMatrixHeatmap[yIdx][xIdx] = getNumericValue(row[zCol]);
+                        }
+                    });
+
+                    dataForPlotly = [{
+                        z: zMatrixHeatmap,
+                        x: xValuesHeatmap,
+                        y: yValuesHeatmap,
+                        type: 'heatmap',
+                        colorscale: 'YlGnBu' // Example colorscale
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'correlation_matrix':
+                    const numericColsForCorr = dataHeaders.filter(header => columnTypes[header] === 'number');
+                    if (numericColsForCorr.length < 2) {
+                        showMessageBox("Correlation Matrix requires at least two numerical columns.");
+                        return;
+                    }
+
+                    // Calculate correlation matrix (simplified Pearson correlation)
+                    const correlationMatrix = [];
+                    for (let i = 0; i < numericColsForCorr.length; i++) {
+                        correlationMatrix[i] = [];
+                        for (let j = 0; j < numericColsForCorr.length; j++) {
+                            if (i === j) {
+                                correlationMatrix[i][j] = 1; // Correlation with self is 1
+                            } else {
+                                const xVals = excelData.map(row => getNumericValue(row[numericColsForCorr[i]]));
+                                const yVals = excelData.map(row => getNumericValue(row[numericColsForCorr[j]]));
+
+                                const meanX = xVals.reduce((a, b) => a + b, 0) / xVals.length;
+                                const meanY = yVals.reduce((a, b) => a + b, 0) / yVals.length;
+
+                                let numerator = 0;
+                                let denominatorX = 0;
+                                let denominatorY = 0;
+
+                                for (let k = 0; k < xVals.length; k++) {
+                                    numerator += (xVals[k] - meanX) * (yVals[k] - meanY);
+                                    denominatorX += (xVals[k] - meanX) ** 2;
+                                    denominatorY += (yVals[k] - meanY) ** 2;
+                                }
+
+                                const correlation = numerator / (Math.sqrt(denominatorX) * Math.sqrt(denominatorY));
+                                correlationMatrix[i][j] = isNaN(correlation) ? 0 : correlation; // Handle division by zero
+                            }
+                        }
+                    }
+
+                    dataForPlotly = [{
+                        z: correlationMatrix,
+                        x: numericColsForCorr,
+                        y: numericColsForCorr,
+                        type: 'heatmap',
+                        colorscale: 'RdBu', // Red-Blue for correlation (positive/negative)
+                        zmin: -1, zmax: 1, // Correlation ranges from -1 to 1
+                        colorbar: { title: 'Correlation' }
+                    }];
+                    layout.xaxis = { title: 'Columns' };
+                    layout.yaxis = { title: 'Columns' };
+                    layout.annotations = []; // Add annotations for correlation values
+                    for (let i = 0; i < correlationMatrix.length; i++) {
+                        for (let j = 0; j < correlationMatrix[i].length; j++) {
+                            layout.annotations.push({
+                                x: numericColsForCorr[j],
+                                y: numericColsForCorr[i],
+                                text: correlationMatrix[i][j].toFixed(2),
+                                xref: 'x1',
+                                yref: 'y1',
+                                font: { color: 'white' },
+                                showarrow: false
+                            });
+                        }
+                    }
+                    break;
+                case 'contour':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z (intensity) columns for Contour Plot."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("Contour plot requires X, Y, and Z axes to be numerical.");
+                        return;
+                    }
+                     // Use unique variable names for contour plot data preparation
+                    const xValuesContourPlot = [...new Set(excelData.map(row => getNumericValue(row[xCol])))].sort((a, b) => a - b);
+                    const yValuesContourPlot = [...new Set(excelData.map(row => getNumericValue(row[yCol])))].sort((a, b) => a - b);
+                    const zMatrixContourPlot = Array(yValuesContourPlot.length).fill(0).map(() => Array(xValuesContourPlot.length).fill(0));
+
+                    excelData.forEach(row => {
+                        const x = getNumericValue(row[xCol]);
+                        const y = getNumericValue(row[yCol]);
+                        const z = getNumericValue(row[zCol]);
+                        const xIdx = xValuesContourPlot.indexOf(x);
+                        const yIdx = yValuesContourPlot.indexOf(y);
+                        if (xIdx !== -1 && yIdx !== -1) {
+                            zMatrixContourPlot[yIdx][xIdx] = z;
+                        }
+                    });
+
+                    dataForPlotly = [{
+                        z: zMatrixContourPlot,
+                        x: xValuesContourPlot,
+                        y: yValuesContourPlot,
+                        type: 'contour',
+                        colorscale: 'Jet'
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'lollipop':
+                    if (!xCol || !yCol) { showMessageBox("Select X (category) and Y (value) columns for Lollipop Chart."); return; }
+                    if (yColType !== 'number') { showMessageBox("Lollipop Chart Y (value) must be numerical."); return; }
+                    dataForPlotly = [{
+                        x: excelData.map(row => row[xCol]),
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        mode: 'markers', // For the 'lollipop' head
+                        type: 'scatter',
+                        marker: { size: 12, color: '#6a9f58' },
+                        name: 'Value'
+                    }, {
+                        x: excelData.map(row => row[xCol]),
+                        y: excelData.map(row => 0), // Start of the 'stick' at 0
+                        mode: 'lines',
+                        type: 'scatter',
+                        line: { color: '#6a9f58', width: 2 },
+                        showlegend: false // Hide legend for the line part
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol, zeroline: true }; // Ensure zero line is visible
+                    break;
+                case 'dumbbell':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X (start value), Y (end value), and Z (category) columns for Dumbbell Chart."); return; }
+                    if (xColType !== 'number' || yColType !== 'number') { showMessageBox("Dumbbell Chart X (start) and Y (end) values must be numerical."); return; }
+
+                    dataForPlotly = [
+                        { // Start points
+                            x: excelData.map(row => getNumericValue(row[xCol])),
+                            y: excelData.map(row => row[zCol]),
+                            mode: 'markers',
+                            type: 'scatter',
+                            name: 'Start',
+                            marker: { size: 10, color: '#1f77b4' }
+                        },
+                        { // End points
+                            x: excelData.map(row => getNumericValue(row[yCol])),
+                            y: excelData.map(row => row[zCol]),
+                            mode: 'markers',
+                            type: 'scatter',
+                            name: 'End',
+                            marker: { size: 10, color: '#ff7f0e' }
+                        },
+                        { // Connecting lines
+                            x: excelData.flatMap(row => [getNumericValue(row[xCol]), getNumericValue(row[yCol]), null]), // null to break lines
+                            y: excelData.flatMap(row => [row[zCol], row[zCol], null]),
+                            mode: 'lines',
+                            type: 'scatter',
+                            line: { color: 'gray', width: 1 },
+                            showlegend: false
+                        }
+                    ];
+                    layout.xaxis = { title: 'Value' };
+                    layout.yaxis = { title: zCol };
+                    layout.legend = { orientation: "h", xanchor: "center", x: 0.5, y: -0.2 };
+                    break;
+                case 'scatter3d':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z axes for 3D Scatter Plot."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("3D Scatter plot requires X, Y, and Z axes to be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        z: excelData.map(row => getNumericValue(row[zCol])),
+                        mode: 'markers',
+                        marker: {
+                            size: 8,
+                            opacity: 0.8,
+                            color: excelData.map(row => getNumericValue(row[zCol])), // Color by Z
+                            colorscale: 'Plasma', // Example colorscale
+                            colorbar: { title: zCol }
+                        },
+                        type: 'scatter3d'
+                    }];
+                    layout.scene = { // For 3D plots, layout uses 'scene'
+                        xaxis: { title: xCol },
+                        yaxis: { title: yCol },
+                        zaxis: { title: zCol }
+                    };
+                    break;
+                case 'surface':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z axes for 3D Surface Plot."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("3D Surface plot requires X, Y, and Z axes to be numerical.");
+                        return;
+                    }
+                    // For surface plots, data needs to be a 2D array for Z, and 1D arrays for X, Y
+                    // This is a simplified example, a real surface plot might require more complex data preparation
+                    const xValuesSurface = [...new Set(excelData.map(row => getNumericValue(row[xCol])))].sort((a, b) => a - b);
+                    const yValuesSurface = [...new Set(excelData.map(row => getNumericValue(row[yCol])))].sort((a, b) => a - b);
+                    const zMatrixSurface = Array(yValuesSurface.length).fill(0).map(() => Array(xValuesSurface.length).fill(0));
+
+                    excelData.forEach(row => {
+                        const x = getNumericValue(row[xCol]);
+                        const y = getNumericValue(row[yCol]);
+                        const z = getNumericValue(row[zCol]);
+                        const xIdx = xValuesSurface.indexOf(x);
+                        const yIdx = yValuesSurface.indexOf(y);
+                        if (xIdx !== -1 && yIdx !== -1) {
+                            zMatrixSurface[yIdx][xIdx] = z;
+                        }
+                    });
+
+                    dataForPlotly = [{
+                        x: xValuesSurface,
+                        y: yValuesSurface,
+                        z: zMatrixSurface,
+                        type: 'surface',
+                        colorscale: 'Portland'
+                    }];
+                    layout.scene = {
+                        xaxis: { title: xCol },
+                        yaxis: { title: yCol },
+                        zaxis: { title: zCol }
+                    };
+                    break;
+                case 'mesh3d':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X, Y, and Z axes for 3D Mesh Plot."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("3D Mesh plot requires X, Y, and Z axes to be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map(row => getNumericValue(row[xCol])),
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        z: excelData.map(row => getNumericValue(row[zCol])),
+                        alphahull: 5, // Adjusts the "tightness" of the mesh
+                        opacity: 0.5,
+                        color: '#4c78a8',
+                        type: 'mesh3d'
+                    }];
+                    layout.scene = {
+                        xaxis: { title: xCol },
+                        yaxis: { title: yCol },
+                        zaxis: { title: zCol }
+                    };
+                    break;
+                case 'polar':
+                    if (!xCol || !yCol) { showMessageBox("Select X (angle) and Y (radius) columns for Polar Chart."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Polar chart radius (Y-axis) must be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        r: excelData.map(row => getNumericValue(row[yCol])),
+                        theta: excelData.map(row => (xColType === 'number' ? getNumericValue(row[xCol]) : row[xCol])),
+                        mode: 'lines+markers',
+                        type: 'scatterpolar',
+                        marker: { color: '#8c564b' }
+                    }];
+                    layout.polar = {
+                        radialaxis: { title: yCol },
+                        angularaxis: { title: xCol }
+                    };
+                    break;
+                case 'sunburst':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select Parent (X), Child (Y), and Values (Z) columns for Sunburst Chart."); return; }
+                    if (zColType !== 'number') {
+                        showMessageBox("Sunburst chart values (Z-axis) must be numerical.");
+                        return;
+                    }
+                    // For hierarchical charts, Plotly expects 'ids', 'labels', 'parents', and 'values'
+                    let ids = [];
+                    let labels = [];
+                    let parents = [];
+                    let values = [];
+
+                    // Create unique IDs for each level of hierarchy
+                    const uniqueParents = [...new Set(excelData.map(row => row[xCol]))];
+                    const uniqueChildren = [...new Set(excelData.map(row => row[yCol]))];
+
+                    // Add top level (parents)
+                    uniqueParents.forEach(p => {
+                        ids.push(p);
+                        labels.push(p);
+                        parents.push(''); // Top level has no parent
+                        values.push(0); // Placeholder, actual values aggregated later
+                    });
+
+                    // Add second level (children)
+                    excelData.forEach(row => {
+                        const parent = row[xCol];
+                        const child = row[yCol];
+                        const value = getNumericValue(row[zCol]);
+
+                        const childId = `${parent}-${child}`;
+                        if (!ids.includes(childId)) {
+                            ids.push(childId);
+                            labels.push(child);
+                            parents.push(parent);
+                            values.push(value);
+                        } else {
+                            // Aggregate values for existing child
+                            const index = ids.indexOf(childId);
+                            values[index] += value;
+                        }
+                    });
+
+                    // Aggregate values for parents (sum of children's values)
+                    uniqueParents.forEach((p, index) => {
+                        const parentValue = excelData
+                            .filter(row => row[xCol] === p)
+                            .reduce((sum, row) => sum + getNumericValue(row[zCol]), 0);
+                        values[ids.indexOf(p)] = parentValue;
+                    });
+
+
+                    dataForPlotly = [{
+                        type: 'sunburst',
+                        ids: ids,
+                        labels: labels,
+                        parents: parents,
+                        values: values,
+                        branchvalues: 'total', // Sums up values from children
+                        outsidetextfont: {size: 14, color: '#334155'},
+                        leaf: {opacity: 0.8},
+                        marker: {
+                            line: {width: 2}
+                        }
+                    }];
+                    layout.margin = {l: 0, r: 0, b: 0, t: 50}; // Adjust margins for sunburst
+                    break;
+                case 'treemap':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select Parent (X), Child (Y), and Values (Z) columns for Treemap."); return; }
+                    if (zColType !== 'number') {
+                        showMessageBox("Treemap values (Z-axis) must be numerical.");
+                        return;
+                    }
+                    // Similar data preparation as sunburst
+                    let idsTreeMap = [];
+                    let labelsTreeMap = [];
+                    let parentsTreeMap = [];
+                    let valuesTreeMap = [];
+
+                    const uniqueParentsTreeMap = [...new Set(excelData.map(row => row[xCol]))];
+                    uniqueParentsTreeMap.forEach(p => {
+                        idsTreeMap.push(p);
+                        labelsTreeMap.push(p);
+                        parentsTreeMap.push('');
+                        valuesTreeMap.push(0);
+                    });
+
+                    excelData.forEach(row => {
+                        const parent = row[xCol];
+                        const child = row[yCol];
+                        const value = getNumericValue(row[zCol]);
+
+                        const childId = `${parent}-${child}`;
+                        if (!idsTreeMap.includes(childId)) {
+                            idsTreeMap.push(childId);
+                            labelsTreeMap.push(child);
+                            parentsTreeMap.push(parent);
+                            valuesTreeMap.push(value);
+                        } else {
+                            const index = idsTreeMap.indexOf(childId);
+                            valuesTreeMap[index] += value;
+                        }
+                    });
+
+                    uniqueParentsTreeMap.forEach((p, index) => {
+                        const parentValue = excelData
+                            .filter(row => row[xCol] === p)
+                            .reduce((sum, row) => sum + getNumericValue(row[zCol]), 0);
+                        valuesTreeMap[idsTreeMap.indexOf(p)] = parentValue;
+                    });
+
+                    dataForPlotly = [{
+                        type: 'treemap',
+                        ids: idsTreeMap,
+                        labels: labelsTreeMap,
+                        parents: parentsTreeMap,
+                        values: valuesTreeMap,
+                        branchvalues: 'total',
+                        pathbar: {visible: false}, // Hide pathbar for cleaner look
+                        marker: {
+                            line: {width: 2}
+                        }
+                    }];
+                    layout.margin = {l: 0, r: 0, b: 0, t: 50}; // Adjust margins for treemap
+                    break;
+                case 'funnel':
+                    if (!xCol || !yCol) { showMessageBox("Select X (stages) and Y (values) columns for Funnel Chart."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Funnel chart values (Y-axis) must be numerical.");
+                        return;
+                    }
+                    // Aggregate values by stage
+                    const aggregatedFunnel = {};
+                    excelData.forEach(row => {
+                        const stage = row[xCol];
+                        const value = getNumericValue(row[yCol]);
+                        aggregatedFunnel[stage] = (aggregatedFunnel[stage] || 0) + value;
+                    });
+
+                    dataForPlotly = [{
+                        y: Object.keys(aggregatedFunnel),
+                        x: Object.values(aggregatedFunnel),
+                        type: 'funnel',
+                        marker: { color: '#d62728' },
+                        textinfo: 'value+percent initial'
+                    }];
+                    layout.xaxis = { title: yCol }; // X-axis is value for funnel
+                    layout.yaxis = { title: xCol }; // Y-axis is stage for funnel
+                    break;
+                case 'sankey':
+                    showMessageBox("Sankey Diagram requires specific 'source', 'target', and 'value' columns. Please ensure your data is structured for this. This chart type is complex and needs manual data mapping.");
+                    return; // Sankey is too complex for generic auto-mapping.
+                case 'gantt':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X (Task Name), Y (Start Date), and Z (End Date) columns for Gantt Chart."); return; }
+                    if (columnTypes[xCol] === 'number' || columnTypes[yCol] !== 'date' || columnTypes[zCol] !== 'date') {
+                        showMessageBox("Gantt Chart requires X (Task Name) as categorical, Y (Start Date) and Z (End Date) as date columns.");
+                        return;
+                    }
+                    // Plotly Gantt uses 'x', 'y', 'base' where x is end, base is start, y is task name
+                    dataForPlotly = [{
+                        x: excelData.map(row => row[zCol]), // End date
+                        y: excelData.map(row => row[xCol]), // Task name
+                        base: excelData.map(row => row[yCol]), // Start date
+                        mode: 'lines',
+                        type: 'bar', // Use bar for gantt bars
+                        orientation: 'h',
+                        marker: { color: '#9467bd' }
+                    }];
+                    layout.xaxis = { type: 'date', title: 'Date' };
+                    layout.yaxis = { title: 'Task' };
+                    break;
+                case 'parallel_coordinates':
+                    const numericColumnsForParallel = dataHeaders.filter(header => columnTypes[header] === 'number');
+                    if (numericColumnsForParallel.length < 2) {
+                        showMessageBox("Parallel Coordinates plot requires at least two numerical columns.");
+                        return;
+                    }
+                    const dimensions = numericColumnsForParallel.map(col => ({
+                        label: col,
+                        values: excelData.map(row => getNumericValue(row[col]))
+                    }));
+
+                    dataForPlotly = [{
+                        type: 'parcoords',
+                        line: {
+                            color: excelData.map(row => getNumericValue(row[numericColumnsForParallel[0]])), // Color by first numeric column
+                            colorscale: 'Jet',
+                            showscale: true
+                        },
+                        dimensions: dimensions
+                    }];
+                    layout.margin = {l: 50, r: 50, b: 50, t: 50}; // Adjust margins for parcoords
+                    break;
+                case 'indicator_gauge':
+                    if (!xCol) { showMessageBox("Select a numerical column for the Indicator/Gauge value (X-Axis)."); return; }
+                    if (xColType !== 'number') {
+                        showMessageBox("Indicator/Gauge value (X-Axis) must be numerical.");
+                        return;
+                    }
+                    // For simplicity, take the last value of the selected column as the indicator value
+                    const indicatorValue = excelData.length > 0 ? getNumericValue(excelData[excelData.length - 1][xCol]) : 0;
+                    dataForPlotly = [{
+                        type: "indicator",
+                        mode: "gauge+number",
+                        value: indicatorValue,
+                        title: { text: xCol },
+                        gauge: {
+                            axis: { range: [null, Math.max(...excelData.map(row => getNumericValue(row[xCol]))) * 1.2] }, // Auto-scale range
+                            bar: { color: "#3b82f6" },
+                            bgcolor: "white",
+                            borderwidth: 2,
+                            bordercolor: "gray",
+                            steps: [
+                                { range: [0, Math.max(...excelData.map(row => getNumericValue(row[xCol]))) * 0.5], color: "lightgray" },
+                                { range: [Math.max(...excelData.map(row => getNumericValue(row[xCol]))) * 0.5, Math.max(...excelData.map(row => getNumericValue(row[xCol]))) * 0.8], color: "gray" }
+                            ],
+                            threshold: {
+                                line: { color: "red", width: 4 },
+                                thickness: 0.75,
+                                value: Math.max(...excelData.map(row => getNumericValue(row[xCol]))) * 0.9
+                            }
+                        }
+                    }];
+                    layout.height = 300; // Adjust height for gauge
+                    layout.margin = { t: 25, b: 25, l: 25, r: 25 };
+                    break;
+                case 'bullet':
+                    if (!xCol || !yCol || !zCol) { showMessageBox("Select X (value), Y (target), and Z (range) columns for Bullet Chart."); return; }
+                    if (xColType !== 'number' || yColType !== 'number' || zColType !== 'number') {
+                        showMessageBox("Bullet Chart requires X (value), Y (target), and Z (range) to be numerical.");
+                        return;
+                    }
+                    // For simplicity, using first row's data for a single bullet chart
+                    const bulletValue = getNumericValue(excelData[0][xCol]);
+                    const bulletTarget = getNumericValue(excelData[0][yCol]);
+                    const bulletRange = getNumericValue(excelData[0][zCol]); // Assuming Z is max range for simplicity
+
+                    dataForPlotly = [{
+                        type: "indicator",
+                        mode: "number+gauge",
+                        value: bulletValue,
+                        domain: { x: [0, 1], y: [0, 1] },
+                        title: { text: `<b>${xCol}</b>` },
+                        gauge: {
+                            shape: "bullet",
+                            axis: { range: [null, bulletRange * 1.2] },
+                            threshold: {
+                                line: { color: "red", width: 2 },
+                                thickness: 0.75,
+                                value: bulletTarget
+                            },
+                            steps: [
+                                { range: [0, bulletRange * 0.5], color: "lightgray" },
+                                { range: [bulletRange * 0.5, bulletRange * 0.8], color: "gray" }
+                            ],
+                            bar: { color: "#2ca02c" }
+                        }
+                    }];
+                    layout.height = 150; // Adjust height for bullet chart
+                    layout.margin = { t: 25, b: 25, l: 25, r: 25 };
+                    break;
+                case 'waterfall':
+                    if (!xCol || !yCol) { showMessageBox("Select X (category) and Y (value) columns for Waterfall Chart."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Waterfall Chart values (Y-axis) must be numerical.");
+                        return;
+                    }
+                    // Prepare data for waterfall: need measures and phases
+                    // This is a simplified example, a real waterfall might need explicit 'measure' column
+                    const waterfallX = excelData.map(row => row[xCol]);
+                    const waterfallY = excelData.map(row => getNumericValue(row[yCol]));
+
+                    dataForPlotly = [{
+                        x: waterfallX,
+                        y: waterfallY,
+                        type: "waterfall",
+                        orientation: "v",
+                        measure: Array(waterfallY.length).fill('relative'), // Assume all are relative changes for simplicity
+                        connector: { line: { color: "rgb(63, 63, 63)" } }
+                    }];
+                    layout.xaxis = { title: xCol };
+                    layout.yaxis = { title: yCol };
+                    break;
+                case 'table_plotly':
+                    // Plotly Table requires headers and cells data
+                    if (dataHeaders.length === 0) {
+                        showMessageBox("No data available to render a table.");
+                        return;
+                    }
+                    const tableCells = dataHeaders.map(header => excelData.map(row => row[header]));
+                    dataForPlotly = [{
+                        type: 'table',
+                        header: {
+                            values: dataHeaders,
+                            align: "center",
+                            line: { width: 1, color: 'black' },
+                            fill: { color: "#85a8d0" },
+                            font: { family: "Inter, sans-serif", size: 12, color: "white" }
+                        },
+                        cells: {
+                            values: tableCells,
+                            align: "left",
+                            line: { color: "black", width: 1 },
+                            fill: { color: ['#f0f4f8', 'white'] }, // Alternating row colors
+                            font: { family: "Inter, sans-serif", size: 11, color: "#334155" }
+                        }
+                    }];
+                    layout.height = 500; // Adjust height for table
+                    layout.margin = { t: 50, b: 50, l: 10, r: 10 }; // Adjust margins
+                    break;
+                case 'sparkline':
+                    if (!yCol) { showMessageBox("Select Y (value) column for Sparkline."); return; }
+                    if (yColType !== 'number') {
+                        showMessageBox("Sparkline Y (value) must be numerical.");
+                        return;
+                    }
+                    dataForPlotly = [{
+                        x: excelData.map((_, i) => i), // Use index as X for simplicity
+                        y: excelData.map(row => getNumericValue(row[yCol])),
+                        mode: 'lines',
+                        type: 'scatter',
+                        line: { color: '#1f77b4', width: 1 },
+                        fill: 'tozeroy',
+                        fillcolor: 'rgba(31, 119, 180, 0.2)'
+                    }];
+                    // Sparklines are typically small, so adjust layout accordingly
+                    layout.xaxis = { showgrid: false, zeroline: false, showticklabels: false };
+                    layout.yaxis = { showgrid: false, zeroline: false, showticklabels: false };
+                    layout.margin = { l: 0, r: 0, t: 0, b: 0 };
+                    layout.height = 80; // Very small height for sparkline effect
+                    break;
+                default:
+                    showMessageBox("Please select a valid chart type.");
+                    return;
+            }
+
+            // Create the main chart container (the "pane")
+            const chartPaneDiv = document.createElement('div');
+            chartPaneDiv.className = 'chart-container';
+
+            // Create the div where Plotly will render the chart
+            const plotAreaDiv = document.createElement('div');
+            plotAreaDiv.id = `chart-plot-${Date.now()}`; // Unique ID for each plot area
+            plotAreaDiv.className = 'chart-plot-area';
+
+            // Create the footer for the chart pane
+            const chartFooterDiv = document.createElement('div');
+            chartFooterDiv.className = 'chart-footer';
+            let footerText = `Visualizing: <strong>${xCol || 'N/A'}</strong>`;
+            if (yCol) footerText += ` vs <strong>${yCol}</strong>`;
+            if (zCol && chartType !== 'scatter3d' && chartType !== 'surface' && chartType !== 'mesh3d' && chartType !== 'contour' && chartType !== 'bullet' && chartType !== 'combo_line_bar' && chartType !== 'dumbbell' && chartType !== 'stacked_bar' && chartType !== 'grouped_bar') footerText += ` (Size/Color/Values by <strong>${zCol}</strong>)`;
+            if (zCol && (chartType === 'scatter3d' || chartType === 'surface' || chartType === 'mesh3d' || chartType === 'contour')) footerText += ` (Z-axis: <strong>${zCol}</strong>)`;
+            if (chartType === 'parallel_coordinates') footerText = `Visualizing: All numeric columns`;
+            if (chartType === 'sankey') footerText = `Sankey Diagram (requires specific data structure)`;
+            if (chartType === 'indicator_gauge') footerText = `Value: <strong>${xCol}</strong>`;
+            if (chartType === 'bullet') footerText = `Value: <strong>${xCol}</strong>, Target: <strong>${yCol}</strong>, Range: <strong>${zCol}</strong>`;
+            if (chartType === 'table_plotly') footerText = `Displaying all data as an interactive table.`;
+            if (chartType === 'sparkline') footerText = `Sparkline for: <strong>${yCol}</strong>`;
+            if (chartType === 'combo_line_bar') footerText = `Bars: <strong>${yCol}</strong>, Line: <strong>${zCol}</strong>`;
+            if (chartType === 'dumbbell') footerText = `Start: <strong>${xCol}</strong>, End: <strong>${yCol}</strong>, Category: <strong>${zCol}</strong>`;
+            if (chartType === 'stacked_bar' || chartType === 'grouped_bar') footerText = `X: <strong>${xCol}</strong>, Y: <strong>${yCol}</strong>, Group/Stack by: <strong>${zCol}</strong>`;
+            if (chartType === 'gantt') footerText = `Task: <strong>${xCol}</strong>, Start: <strong>${yCol}</strong>, End: <strong>${zCol}</strong>`;
+
+
+            chartFooterDiv.innerHTML = `<p>${footerText}</p><p>Chart Type: ${chartType.charAt(0).toUpperCase() + chartType.slice(1)}</p>`;
+
+
+            // Append the plot area and footer to the pane
+            chartPaneDiv.appendChild(plotAreaDiv);
+            chartPaneDiv.appendChild(chartFooterDiv);
+
+            // Append the complete pane to the charts container
+            chartsContainer.appendChild(chartPaneDiv);
+
+            // Render the chart into its designated plot area
+            Plotly.newPlot(plotAreaDiv.id, dataForPlotly, layout, { responsive: true });
+        }
+
+        // --- Event Listeners ---
+
+        // Listen for file input changes
+        excelFileInput.addEventListener('change', handleFileUpload);
+        processPastedDataBtn.addEventListener('click', handlePastedData); // Listen for paste button click
+        generateSummaryBtn.addEventListener('click', generateDataSummary); // Listen for AI summary button
+
+        // Listen for custom chart generation button click
+        generateChartBtn.addEventListener('click', () => {
+            const selectedChartType = chartTypeSelect.value;
+            const selectedXAxis = xAxisSelect.value;
+            const selectedYAxis = yAxisSelect.value;
+            const selectedZAxis = zAxisSelect.value;
+            let chartTitle = `Custom ${selectedChartType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`;
+
+            if (selectedChartType === 'parallel_coordinates') {
+                chartTitle += ': All Numeric Columns';
+            } else if (selectedChartType === 'sankey') {
+                 chartTitle += ': Source, Target, Value';
+            } else if (selectedChartType === 'indicator_gauge') {
+                chartTitle += `: ${selectedXAxis}`;
+            } else if (selectedChartType === 'bullet') {
+                chartTitle += `: ${selectedXAxis} (Target: ${selectedYAxis}, Range: ${selectedZAxis})`;
+            } else if (selectedChartType === 'table_plotly') {
+                chartTitle = `Interactive Data Table`;
+            } else if (selectedChartType === 'sparkline') {
+                chartTitle = `Sparkline for ${selectedYAxis}`;
+            } else if (selectedChartType === 'combo_line_bar') {
+                chartTitle = `Combo Chart: ${selectedYAxis} & ${selectedZAxis} vs ${selectedXAxis}`;
+            } else if (selectedChartType === 'dumbbell') {
+                chartTitle = `Dumbbell Chart: ${selectedXAxis} to ${selectedYAxis} by ${selectedZAxis}`;
+            } else if (selectedChartType === 'stacked_bar' || selectedChartType === 'grouped_bar') {
+                chartTitle = `${chartTitle}: ${selectedYAxis} by ${selectedXAxis} (Grouped by ${selectedZAxis})`;
+            } else if (selectedChartType === 'gantt') {
+                chartTitle = `Gantt Chart: ${selectedXAxis} from ${selectedYAxis} to ${selectedZAxis}`;
+            } else if (selectedChartType === 'correlation_matrix') {
+                chartTitle = `Correlation Matrix`;
+            }
+            else {
+                chartTitle += `: ${selectedXAxis}${selectedYAxis ? ' vs ' + selectedYAxis : ''}${selectedZAxis ? ' & ' + selectedZAxis : ''}`;
+            }
+
+            // Call renderChart with clearContainer = true for custom charts
+            renderChart(selectedChartType, selectedXAxis, selectedYAxis, selectedZAxis, chartTitle, true);
+        });
+
+        // Close message box when OK is clicked
+        messageBoxClose.addEventListener('click', hideMessageBox);
+
+        // Initial state: hide sections until file is uploaded or data pasted
+        window.onload = function() {
+            dataPreviewSection.classList.add('hidden');
+            aiSummarySection.classList.add('hidden');
+            autoSuggestionsSection.classList.add('hidden');
+            customVisualizationSection.classList.add('hidden');
+            chartDisplayTitle.classList.add('hidden');
+        };
+
+    </script>
+</body>
+</html>
 
